@@ -50,10 +50,10 @@ func setRequestTarget(request *http.Request, target string, scheme string) {
 func getTransport(scheme string, timeout time.Duration) (transport *http.Transport) {
 	if scheme == "https" {
 		transport = &http.Transport{
-			Dial: (&net.Dialer{ // go1.8 deprecated: Use DialContext instead
+			DialContext: (&net.Dialer{
 				Timeout:   timeout,
 				KeepAlive: 10 * timeout,
-			}).Dial,
+			}).DialContext,
 			DisableKeepAlives:     *closeConnections,
 			TLSHandshakeTimeout:   timeout,
 			ResponseHeaderTimeout: timeout,
@@ -61,10 +61,10 @@ func getTransport(scheme string, timeout time.Duration) (transport *http.Transpo
 		}
 	} else {
 		transport = &http.Transport{
-			Dial: (&net.Dialer{ // go1.8 deprecated: Use DialContext instead
+			DialContext: (&net.Dialer{
 				Timeout:   timeout,
 				KeepAlive: 10 * timeout,
-			}).Dial,
+			}).DialContext,
 			DisableKeepAlives:     *closeConnections,
 			TLSHandshakeTimeout:   timeout,
 			ResponseHeaderTimeout: timeout,
@@ -83,7 +83,10 @@ func handleAlternativeRequest(request *http.Request, timeout time.Duration, sche
 	response := handleRequest(request, timeout, scheme)
 	if response != nil {
 		log.Printf("| B | \"%s %s %v\" %s", request.Method, request.URL.RequestURI(), request.Proto, response.Status)
-		response.Body.Close()
+		err := response.Body.Close()
+		if err != nil {
+			log.Fatalf("Cannot close duplicate req body! %s", err.Error())
+		}
 	}
 }
 
@@ -103,6 +106,7 @@ func SchemeAndHost(url string) (scheme, hostname string) {
 		hostname = strings.TrimPrefix(url, "https://")
 		scheme = "https"
 	} else {
+		//goland:noinspection HttpUrlsUsage
 		hostname = strings.TrimPrefix(url, "http://")
 		scheme = "http"
 	}
@@ -140,7 +144,7 @@ func (h *handler) SetSchemes() {
 }
 
 // ServeHTTP duplicates the incoming request (req) and does the request to the
-// Target and the Alternate target discading the Alternate response
+// Target and the Alternate target discarding the Alternate response
 func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var alternativeRequest *http.Request
 	var productionRequest *http.Request
@@ -183,7 +187,12 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	resp := handleRequest(productionRequest, timeout, h.TargetScheme)
 
 	if resp != nil {
-		defer resp.Body.Close()
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				log.Fatalf("Cannot close production connection to: %s %s. %s", productionRequest.Method, productionRequest.URL, err.Error())
+			}
+		}(resp.Body)
 
 		log.Printf("| A | \"%s %s %v\" %s", productionRequest.Method, productionRequest.URL.RequestURI(), productionRequest.Proto, resp.Status)
 
@@ -194,7 +203,10 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(resp.StatusCode)
 
 		// Forward response body.
-		io.Copy(w, resp.Body)
+		_, err := io.Copy(w, resp.Body)
+		if err != nil {
+			log.Fatalf("Cannot copy production response back to client. %s", err.Error())
+		}
 	}
 }
 
@@ -243,7 +255,7 @@ func main() {
 
 	h := handler{
 		Target:       *targetProduction,
-		Alternatives: arrayAlternatives(altServers),
+		Alternatives: altServers,
 		Randomizer:   *rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
@@ -256,14 +268,12 @@ func main() {
 		// Close connections to clients by setting the "Connection": "close" header in the response.
 		server.SetKeepAlivesEnabled(false)
 	}
-	server.Serve(listener)
-}
 
-type nopCloser struct {
-	io.Reader
+	var serveErr = server.Serve(listener)
+	if serveErr != nil {
+		log.Fatalf("Cannot start server! %s", serveErr.Error())
+	}
 }
-
-func (nopCloser) Close() error { return nil }
 
 // DuplicateRequest duplicate http request
 func DuplicateRequest(request *http.Request) (dup *http.Request) {
@@ -300,30 +310,30 @@ func updateForwardedHeaders(request *http.Request) {
 	insertOrExtendXFFHeader(request, remoteIP)
 }
 
-const XFF_HEADER = "X-Forwarded-For"
+const XffHeader = "X-Forwarded-For"
 
 func insertOrExtendXFFHeader(request *http.Request, remoteIP string) {
-	header := request.Header.Get(XFF_HEADER)
+	header := request.Header.Get(XffHeader)
 	if header != "" {
 		// extend
-		request.Header.Set(XFF_HEADER, header+", "+remoteIP)
+		request.Header.Set(XffHeader, header+", "+remoteIP)
 	} else {
 		// insert
-		request.Header.Set(XFF_HEADER, remoteIP)
+		request.Header.Set(XffHeader, remoteIP)
 	}
 }
 
-const FORWARDED_HEADER = "Forwarded"
+const ForwardedHeader = "Forwarded"
 
 // Implementation according to rfc7239
 func insertOrExtendForwardedHeader(request *http.Request, remoteIP string) {
 	extension := "for=" + remoteIP
-	header := request.Header.Get(FORWARDED_HEADER)
+	header := request.Header.Get(ForwardedHeader)
 	if header != "" {
 		// extend
-		request.Header.Set(FORWARDED_HEADER, header+", "+extension)
+		request.Header.Set(ForwardedHeader, header+", "+extension)
 	} else {
 		// insert
-		request.Header.Set(FORWARDED_HEADER, extension)
+		request.Header.Set(ForwardedHeader, extension)
 	}
 }
