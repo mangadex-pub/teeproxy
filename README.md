@@ -1,8 +1,6 @@
 teeproxy
 =========
 
-[![Docker Pulls](https://img.shields.io/docker/pulls/chrislusf/teeproxy.svg?maxAge=604800)](https://hub.docker.com/r/chrislusf/teeproxy/)
-
 A reverse HTTP proxy that duplicates requests.
 
 Why you may need this?
@@ -69,4 +67,3 @@ By default, teeproxy tries to reuse connections. This can be turned off, if the
 endpoints do not support this.
 
 *  `-close-connections` (default is false)
-
