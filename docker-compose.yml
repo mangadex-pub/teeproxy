@@ -7,6 +7,6 @@ services:
       LISTEN_ADDR: "0.0.0.0:8000"
       TARGET_PRIMARY: "http://primary:8080"
       TARGET_REPLICAS: "http://replica-1:8081 http://replica-2:8081 http://replica-3:8082"
-      EXTRA_ARGS: "-debug -b.rewrite true -b.timeout 500"
+      EXTRA_ARGS: "-maxprocs 8 -debug -b.rewrite true -b.timeout 500"
     ports:
       - "8000:8000"

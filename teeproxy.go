@@ -27,6 +27,7 @@ var (
 	productionHostRewrite = flag.Bool("a.rewrite", false, "rewrite the host header when proxying production traffic")
 	alternateHostRewrite  = flag.Bool("b.rewrite", false, "rewrite the host header when proxying alternate site traffic")
 	alternateMethods      = flag.String("b.methods", "", "forward only the given HTTP methods matched by regex")
+	maxProcs              = flag.Int("maxprocs", runtime.NumCPU(), "sets the max number of processes")
 	percent               = flag.Float64("p", 100.0, "float64 percentage of traffic to send to testing")
 	tlsPrivateKey         = flag.String("key.file", "", "path to the TLS private key file")
 	tlsCertificate        = flag.String("cert.file", "", "path to the TLS certificate file")
@@ -226,10 +227,11 @@ func main() {
 		alternateMethodsRegex = regexp.MustCompile(*alternateMethods)
 	}
 
-	log.Printf("Starting teeproxy at %s sending to A: %s and B: %s",
-		*listen, *targetProduction, altServers)
+	numcpus := min(runtime.NumCPU(), *maxProcs)
+	runtime.GOMAXPROCS(numcpus)
 
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	log.Printf("Starting teeproxy with %d processes, listening on %s and sending to A: %s and B: %s",
+		numcpus, *listen, *targetProduction, altServers)
 
 	var err error
 
