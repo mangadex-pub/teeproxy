@@ -1,5 +1,12 @@
-teeproxy:
-  image: ankitguptag18/teeproxy:distroless-static
-  ports:
-    - "8000:8000"
-  command: /teeproxy -l=:8000 -a="hostname1:8888" -b="hostname2:9908" -debug=false
+services:
+  teeproxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      LISTEN_ADDR: "0.0.0.0:8000"
+      TARGET_PRIMARY: "http://primary:8080"
+      TARGET_REPLICAS: "http://replica-1:8081 http://replica-2:8081 http://replica-3:8082"
+      EXTRA_ARGS: "-debug -b.rewrite true -b.timeout 500"
+    ports:
+      - "8000:8000"
