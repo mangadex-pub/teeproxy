@@ -50,9 +50,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,event=push,enable=true,prefix=branch-{{ branch }}-,format=short
+            type=sha,event=push,enable={{ !is_default_branch }},prefix=branch-{{ branch }}-,format=short
             type=sha,event=push,enable={{ is_default_branch }},prefix=git-,format=short
-            type=semver,event=push,pattern={{raw}}
+            type=semver,event=push,pattern={{ raw }}
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
